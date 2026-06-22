@@ -1,0 +1,22 @@
+seed: 42
+data:
+  root: dataset/01
+  image_size: 224
+  val_fraction: 0.2
+model:
+  backbone: google/vit-base-patch16-224-in21k
+  hidden_dim: 256
+  landmark_layers: 2
+  attention_heads: 8
+  dropout: 0.2
+  freeze_image_encoder: true
+training:
+  epochs: 20
+  batch_size: 16
+  num_workers: 4
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  ccc_weight: 0.7
+  mse_weight: 0.3
+  output_dir: outputs/baseline
+

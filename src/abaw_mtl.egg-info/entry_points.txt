@@ -1,0 +1,3 @@
+[console_scripts]
+abaw-smoke = abaw.smoke_test:main
+abaw-train = abaw.train:main
