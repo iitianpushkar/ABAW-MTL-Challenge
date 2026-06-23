@@ -1,12 +1,33 @@
 # ABAW 2026 Research Project
 
-This repository starts from the proven Colab prototype: a pretrained ViT encodes facial appearance, a Transformer encodes 68 facial landmarks, bidirectional cross-attention fuses both streams, and a regression head predicts valence and arousal.
+This repository starts from a prototype: a pretrained ViT encodes facial appearance, a Transformer encodes 68 facial landmarks, bidirectional cross-attention fuses both streams, and a regression head predicts valence and arousal.
 
 The current AFEW-VA subset contains 50 videos and 2,381 annotated frames. Its labels are in `[-10, 10]`; the loader scales them to `[-1, 1]` to match Aff-Wild2 and the model's bounded output.
 
-## Setup
+## High-level architecture 
+```mermaid
+flowchart TD
+  A["Face frame image"] --> B["Pretrained ViT image encoder"]
+  B --> C["Image tokens"]
 
-Use Python 3.11 or 3.12. The existing `myenv` uses Python 3.14 and should not be used for the PyTorch environment.
+  D["68 facial landmarks"] --> E["Landmark Transformer encoder"]
+  E --> F["Landmark tokens"]
+
+  C --> G["Image attends to landmarks"]
+  F --> H["Landmarks attend to image"]
+
+  G --> I["Image feature"]
+  H --> J["Landmark feature"]
+
+  I --> K["Learned modality gate"]
+  J --> K
+
+  K --> L["Fused affect feature"]
+  L --> M["Regression head"]
+  M --> N["Valence + Arousal"]
+```
+
+## Setup
 
 ```bash
 /opt/homebrew/bin/python3.12 -m venv .venv
@@ -33,29 +54,35 @@ abaw-train --config configs/baseline.yaml
 
 The split is made by video rather than frame, preventing neighboring frames from the same clip leaking into validation. The best checkpoint is written to `outputs/baseline/best.pt`.
 
-## Architecture Direction
+## What Is Implemented Now
 
-The strongest direction is a progressive, reliability-aware temporal MTL system:
+This project currently implements a frame-level valence/arousal baseline:
 
-1. Pretrain separate task specialists for VA, expression, and action units.
-2. Extract frame tokens from a face-affect backbone and geometry tokens from landmarks; add audio and sparse VLM behavior embeddings only after strong visual baselines exist.
-3. Replace unconditional feature addition with directed cross-modal experts and a quality gate. Face detection confidence, landmark stability, blur, occlusion, and speech activity should influence each modality's weight.
-4. Run a lightweight temporal model over 16-32 frame windows. Predict the center frame and average overlapping-window predictions.
-5. Optimize a hybrid CCC and pointwise loss, then use task-aware gradient balancing when EXPR and AU heads are added.
+1. Load AFEW-VA image frames, 68 facial landmarks, and valence/arousal labels.
+2. Resize and normalize each image frame.
+3. Normalize landmark coordinates so the model focuses on face shape rather than absolute image position.
+4. Encode the image with a pretrained ViT backbone.
+5. Encode landmarks with a small Transformer encoder.
+6. Fuse image and landmark features with bidirectional cross-attention.
+7. Learn a modality gate that chooses how much to trust the image feature versus the landmark feature.
+8. Predict valence and arousal in the normalized `[-1, 1]` range.
+9. Train with a hybrid CCC and MSE loss.
+10. Save the best validation checkpoint to `outputs/baseline/best.pt`.
 
-The novel core can be a **Quality-Gated Progressive Cross-Task Temporal Transformer**: task-specialist tokens act as experts, directed cross-attention models asymmetric transfer, and quality-conditioned routing suppresses harmful experts.
+The current code does not yet include expression classification, action unit detection, or multi-task learning heads.
 
-## Experiment Order
+## File Guide
 
-Run controlled ablations in this order:
+- `configs/baseline.yaml`: stores dataset, model, and training settings.
+- `src/abaw/data.py`: loads frames, landmarks, and labels from the dataset.
+- `src/abaw/model.py`: defines the ViT + landmark Transformer fusion model.
+- `src/abaw/losses.py`: defines CCC and the hybrid VA training loss.
+- `src/abaw/smoke_test.py`: runs one sample through the model to verify setup.
+- `src/abaw/train.py`: trains the baseline model and saves the best checkpoint.
+- `pyproject.toml`: defines package dependencies and terminal commands.
 
-1. Image-only baseline.
-2. Landmark-only baseline.
-3. Current frame-level fusion.
-4. Temporal fusion with video-level splits.
-5. VA plus auxiliary EXPR/AU supervision.
-6. Audio features.
-7. Sparse VLM behavior features.
-8. Reliability-aware expert routing and ensembles.
+## Current Limitations
 
-Do not judge the architecture from AFEW-VA numbers alone. Use it to validate data, optimization, and temporal code; final model selection must use the official ABAW split and metric.
+- The model sees one frame at a time, not a video sequence.
+- The current dataset is small and should be used mainly to validate the pipeline.
+- The pretrained ViT image encoder is frozen by default for faster local experimentation.
